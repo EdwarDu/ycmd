@@ -586,8 +586,19 @@ class LanguageServerConnection( threading.Thread ):
         for watcher in reg[ 'registerOptions' ][ 'watchers' ]:
           # TODO: Take care of watcher kinds. Not everything needs
           # to be watched for create, modify *and* delete actions.
-          pattern = os.path.join( self._project_directory,
-                                  watcher[ 'globPattern' ] )
+
+          base, pattern = self._project_directory, watcher[ 'globPattern' ]
+          if isinstance( pattern, dict ):
+            # RelativePattern
+            base, pattern = (
+              watcher[ 'globPattern' ][ 'baseUri' ],
+              watcher[ 'globPattern' ][ 'pattern' ]
+            )
+          if isinstance( base, dict ):
+            # WorkspaceFolder
+            base = base[ 'uri' ]
+
+          pattern = os.path.join( base, pattern )
           if os.path.isdir( pattern ):
             pattern = os.path.join( pattern, '**' )
           globs.append( pattern )
@@ -1890,7 +1901,7 @@ class LanguageServerCompleter( Completer ):
 
       # Merge any user-supplied 'ls' settings with the defaults
       if 'ls' in user_settings:
-        merged_ls_settings.update( user_settings[ 'ls' ] )
+        utils.UpdateDict( merged_ls_settings, user_settings[ 'ls' ] )
 
       user_settings[ 'ls' ] = merged_ls_settings
       self._settings = user_settings
@@ -2988,22 +2999,29 @@ class LanguageServerCompleter( Completer ):
       # provider, but send a LSP Command instead. We can not resolve those with
       # codeAction/resolve!
       if ( 'command' not in code_action or
-           isinstance( code_action[ 'command' ], str ) ):
+           not isinstance( code_action[ 'command' ], str ) ):
         request_id = self.GetConnection().NextRequestId()
         msg = lsp.CodeActionResolve( request_id, code_action )
-        code_action = self.GetConnection().GetResponse(
-            request_id,
-            msg,
-            REQUEST_TIMEOUT_COMMAND )[ 'result' ]
+        try:
+          code_action = self.GetConnection().GetResponse(
+              request_id,
+              msg,
+              REQUEST_TIMEOUT_COMMAND )[ 'result' ]
+        except ResponseFailedException:
+          # Even if resolving has failed, we might still be able to apply
+          # what we have previously received...
+          # See https://github.com/rust-lang/rust-analyzer/issues/18428
+          if not ( 'edit' in code_action or 'command' in code_action ):
+            raise
 
     result = []
     if 'edit' in code_action:
       result.append( self.CodeActionLiteralToFixIt( request_data,
                                                     code_action ) )
 
-    if 'command' in code_action:
+    if command := code_action.get( 'command' ):
       assert not result, 'Code actions with edit and command is not supported.'
-      if isinstance( code_action[ 'command' ], str ):
+      if isinstance( command, str ):
         unresolved_command_fixit = self.CommandToFixIt( request_data,
                                                         code_action )
       else:
