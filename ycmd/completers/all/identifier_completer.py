@@ -26,10 +26,22 @@ ycm_core = ImportCore()
 SYNTAX_FILENAME = 'YCM_PLACEHOLDER_FOR_SYNTAX'
 
 
+def _IdentifierPathAliases( user_options ):
+  aliases = []
+  for item in user_options.get( 'identifier_path_aliases' ) or []:
+    if isinstance( item, ( list, tuple ) ) and len( item ) == 2:
+      aliases.append( [ str( item[ 0 ] ), str( item[ 1 ] ) ] )
+  return aliases
+
+
 class IdentifierCompleter( GeneralCompleter ):
   def __init__( self, user_options ):
     super().__init__( user_options )
     self._completer = ycm_core.IdentifierCompleter()
+    self._completer.SetKeepIdentifierPaths(
+      bool( user_options.get( 'keep_identifier_paths', False ) ) )
+    self._completer.SetIdentifierPathAliases(
+      _IdentifierPathAliases( user_options ) )
     self._tags_file_last_mtime = defaultdict( int )
     self._max_candidates = user_options[ 'max_num_identifier_candidates' ]
 

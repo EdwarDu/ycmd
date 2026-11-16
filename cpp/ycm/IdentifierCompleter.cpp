@@ -61,6 +61,17 @@ void IdentifierCompleter::ClearForFileAndAddIdentifiersToDatabase(
 }
 
 
+void IdentifierCompleter::SetKeepIdentifierPaths( bool keep ) {
+  YouCompleteMe::SetKeepIdentifierPaths( keep );
+}
+
+
+void IdentifierCompleter::SetIdentifierPathAliases(
+  std::vector< std::vector< std::string > > aliases ) {
+  YouCompleteMe::SetIdentifierPathAliases( std::move( aliases ) );
+}
+
+
 void IdentifierCompleter::AddIdentifiersToDatabaseFromTagFiles(
   std::vector< std::string >& absolute_paths_to_tag_files ) {
   for( auto&& path : absolute_paths_to_tag_files ) {

@@ -58,6 +58,11 @@ public:
   YCM_EXPORT void AddIdentifiersToDatabaseFromTagFiles(
     std::vector< std::string >& absolute_paths_to_tag_files );
 
+  YCM_EXPORT void SetKeepIdentifierPaths( bool keep );
+
+  YCM_EXPORT void SetIdentifierPathAliases(
+    std::vector< std::vector< std::string > > aliases );
+
   // Only provided for tests!
   YCM_EXPORT std::vector< std::string > CandidatesForQuery(
     std::string&& query,

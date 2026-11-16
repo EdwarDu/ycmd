@@ -164,6 +164,7 @@ std::vector< Result > IdentifierDatabase::ResultsForQueryAndType(
 std::vector< Candidate > &IdentifierDatabase::GetCandidateSet(
   std::string&& filetype,
   std::string&& filepath ) {
+  filepath = IdentifierFilePath( std::move( filepath ) );
   return filetype_candidate_map_[ std::move( filetype ) ]
                                 [ std::move( filepath ) ];
 }

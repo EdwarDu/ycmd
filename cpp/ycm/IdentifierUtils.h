@@ -21,8 +21,21 @@
 #include "IdentifierDatabase.h"
 
 #include <filesystem>
+#include <string>
+#include <vector>
 
 namespace YouCompleteMe {
+
+// When enabled, an absolute tags path is lexically normalized instead of
+// resolved. Identifier paths then rewrite the longest configured prefix
+// alias. When disabled, tags paths are resolved with weakly_canonical and
+// buffer paths are stored as given.
+YCM_EXPORT void SetKeepIdentifierPaths( bool keep );
+
+YCM_EXPORT void SetIdentifierPathAliases(
+  std::vector< std::vector< std::string > > aliases );
+
+YCM_EXPORT std::string IdentifierFilePath( std::string filepath );
 
 YCM_EXPORT FiletypeIdentifierMap ExtractIdentifiersFromTagsFile(
   const std::filesystem::path &path_to_tag_file );

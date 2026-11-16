@@ -8,6 +8,8 @@
     "gitcommit": 1
   },
   "collect_identifiers_from_comments_and_strings": 0,
+  "keep_identifier_paths": 0,
+  "identifier_path_aliases": [],
   "max_num_identifier_candidates": 10,
   "max_num_candidates": 50,
   "max_num_candidates_to_detail": -1,

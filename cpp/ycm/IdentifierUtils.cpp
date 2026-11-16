@@ -18,11 +18,18 @@
 #include "IdentifierUtils.h"
 #include "Utils.h"
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace YouCompleteMe {
 
@@ -48,7 +55,119 @@ constexpr std::array LANG_TO_FILETYPE = {
   std::pair{ "SystemdUnit"sv      , "systemd"sv     },
 };
 
+std::atomic< bool > keep_identifier_paths{ false };
+
+struct PathAlias {
+  std::string from;
+  std::string to;
+};
+
+std::mutex identifier_path_aliases_mutex;
+std::shared_ptr< const std::vector< PathAlias > > identifier_path_aliases =
+  std::make_shared< const std::vector< PathAlias > >();
+
+
+std::string NormalizedPrefix( std::string text ) {
+  if ( text.empty() ) {
+    return text;
+  }
+  text = fs::path( std::move( text ) ).lexically_normal().string();
+  while ( text.size() > 1 && ( text.back() == '/' || text.back() == '\\' ) ) {
+    text.pop_back();
+  }
+  return text;
+}
+
+
+std::optional< std::string > RelativeTo( const std::string &root,
+                                          const std::string &path ) {
+  if ( root.empty() || path.empty() ) {
+    return std::nullopt;
+  }
+  if ( path == root ) {
+    return std::string();
+  }
+  if ( root == "/" ) {
+    if ( path.size() > 1 && path[ 0 ] == '/' ) {
+      return path.substr( 1 );
+    }
+    return std::nullopt;
+  }
+  const std::string prefix = root + '/';
+  if ( path.compare( 0, prefix.size(), prefix ) == 0 ) {
+    return path.substr( prefix.size() );
+  }
+  return std::nullopt;
+}
+
 }  // unnamed namespace
+
+
+void SetKeepIdentifierPaths( bool keep ) {
+  keep_identifier_paths.store( keep );
+}
+
+
+void SetIdentifierPathAliases(
+  std::vector< std::vector< std::string > > aliases ) {
+  std::vector< PathAlias > cleaned;
+  cleaned.reserve( aliases.size() );
+  for ( auto &alias : aliases ) {
+    if ( alias.size() != 2 ) {
+      continue;
+    }
+    PathAlias item{ NormalizedPrefix( std::move( alias[ 0 ] ) ),
+                    NormalizedPrefix( std::move( alias[ 1 ] ) ) };
+    if ( item.from.empty() || item.to.empty() || item.from == item.to ) {
+      continue;
+    }
+    cleaned.push_back( std::move( item ) );
+  }
+  std::sort( cleaned.begin(),
+             cleaned.end(),
+             []( const PathAlias &left, const PathAlias &right ) {
+               if ( left.from.size() != right.from.size() ) {
+                 return left.from.size() > right.from.size();
+               }
+               return left.from < right.from;
+             } );
+  cleaned.erase( std::unique( cleaned.begin(),
+                               cleaned.end(),
+                               []( const PathAlias &left,
+                                   const PathAlias &right ) {
+                                 return left.from == right.from;
+                               } ),
+                 cleaned.end() );
+  auto stored =
+    std::make_shared< const std::vector< PathAlias > >( std::move( cleaned ) );
+  std::lock_guard< std::mutex > lock( identifier_path_aliases_mutex );
+  identifier_path_aliases = std::move( stored );
+}
+
+
+std::string IdentifierFilePath( std::string filepath ) {
+  if ( filepath.empty() || !keep_identifier_paths.load() ) {
+    return filepath;
+  }
+  const std::string path = NormalizedPrefix( std::move( filepath ) );
+  std::shared_ptr< const std::vector< PathAlias > > aliases;
+  {
+    std::lock_guard< std::mutex > lock( identifier_path_aliases_mutex );
+    aliases = identifier_path_aliases;
+  }
+  for ( const PathAlias &alias : *aliases ) {
+    const std::optional< std::string > relative =
+      RelativeTo( alias.from, path );
+    if ( !relative ) {
+      continue;
+    }
+    if ( relative->empty() ) {
+      return alias.to;
+    }
+    return ( fs::path( alias.to ) / *relative ).lexically_normal().string();
+  }
+  return path;
+}
 
 
 // For details on the tag format supported, see here for details:
@@ -98,13 +217,20 @@ FiletypeIdentifierMap ExtractIdentifiersFromTagsFile(
     }();
     std::string_view identifier( line.data(), id_end - line.cbegin() );
     fs::path path( path_begin, path_end );
-    path = fs::weakly_canonical( path_to_tag_file.parent_path() / path );
+    // Absolute tags paths are stored lexically so each line does not stat
+    // the file. Relative paths are still resolved against the tags file.
+    if ( keep_identifier_paths.load() && path.is_absolute() ) {
+      path = path.lexically_normal();
+    } else {
+      path = fs::weakly_canonical( path_to_tag_file.parent_path() / path );
+    }
+    const std::string stored = IdentifierFilePath( path.string() );
     std::string_view language( &*lang_begin, lang_end - lang_begin );
     std::string filetype( FindWithDefault( LANG_TO_FILETYPE,
                                            language,
                                            Lowercase( language ) ) );
     filetype_identifier_map[ std::move( filetype ) ]
-                           [ std::move( path ).string() ]
+                           [ stored ]
       .emplace_back( identifier );
   }
   return filetype_identifier_map;

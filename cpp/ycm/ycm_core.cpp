@@ -84,6 +84,25 @@ PYBIND11_MODULE( ycm_core, mod )
     .def( "AddIdentifiersToDatabaseFromTagFiles",
           &IdentifierCompleter::AddIdentifiersToDatabaseFromTagFiles,
           py::call_guard< py::gil_scoped_release >() )
+    .def( "SetKeepIdentifierPaths",
+          &IdentifierCompleter::SetKeepIdentifierPaths )
+    .def( "SetIdentifierPathAliases",
+          []( IdentifierCompleter &self, const py::list &aliases ) {
+            std::vector< std::vector< std::string > > converted;
+            for ( py::handle item : aliases ) {
+              if ( !py::isinstance< py::sequence >( item ) ||
+                   py::isinstance< py::str >( item ) ) {
+                continue;
+              }
+              py::sequence pair = py::reinterpret_borrow< py::sequence >( item );
+              if ( pair.size() != 2 ) {
+                continue;
+              }
+              converted.push_back( { pair[ 0 ].cast< std::string >(),
+                                     pair[ 1 ].cast< std::string >() } );
+            }
+            self.SetIdentifierPathAliases( std::move( converted ) );
+          } )
     .def( "CandidatesForQueryAndType",
           &IdentifierCompleter::CandidatesForQueryAndType,
           py::call_guard< py::gil_scoped_release >(),
